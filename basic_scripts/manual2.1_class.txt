@@ -1,0 +1,96 @@
+class manual2_1_resolving_optimizer():
+
+    def __init__(self, mesh):
+        self.mesh = mesh
+        self.x0 = mesh.current_position
+        self.prev = mesh.previous_position
+        self.constraints = mesh.constraints
+        self.result = self.solver()
+        
+    def objective(self, x):
+        return objective_function_1(self, x, self.constraints, self.prev)
+        
+    def objective_gradient(self, x):
+        return objective_gradient_1(self, x, self.constraints, self.prev)
+
+    def solver(self):
+        x_collection = []
+        constraints = self.mesh.constraints
+        line_cons = self.mesh.line_cons
+        optimum = optimize.minimize(self.objective, jac = self.objective_gradient, tol = tolerance, x0 = self.mesh.current_position)
+        x = optimum.x
+        x_pre = np.array(x).copy()
+        x_sub = np.array(x).copy()
+        dt = self.mesh.dt ** 2
+        M = self.mesh.M
+        for index in range(len(constraints)):
+            constraint_dict = constraints[index]
+            constraint = constraint_dict['constraint']
+            function = constraint.constraint_function
+            lambda_prev = np.array(constraint.lambda0)
+            lambda0 = np.array(constraint.lambda0)
+            ite_cnt = 0
+            while(ite_cnt < 50):
+                print(ite_cnt)
+                del_lambda = 0
+                print(len(x), '--------')
+                for i in range(0,len(x),3):
+
+                    point = np.array(x[i:i+3])
+
+                    constraint_dict = constraints[index]
+                    constraint = constraint_dict['constraint']
+                    function = constraint.constraint_function
+
+                    if constraint.constraint_function(np.array(point)) > 0:
+                        new_point = (point - (lambda0[i//3] * constraint.gradient_function(self.x0[i:i+3]))*(self.mesh.dt**2)/self.mesh.M)[0]
+                    else:
+                        new_point = np.array(point)
+
+                    if constraint.constraint_function(new_point) > 0:
+                        lambda0[i//3] = 0
+                        x[i:i+3] = new_point
+                        x_sub[i:i+3] = new_point
+                        continue
+
+                    if constraint.constraint_function(np.array(point)) > 0:
+                        new_point = constraint.nearest_surface_point(np.array(new_point), np.array(point - new_point))
+                        x[i:i+3] = new_point
+                        x_sub[i:i+3] = new_point
+                        displacement = new_point - point
+                        normal = np.linalg.norm(constraint.gradient_function(self.x0[i:i+3]))
+                        del_lambda = M*np.linalg.norm(displacement)/(dt)
+
+                        lambda0[i//3] -= del_lambda
+
+                        if i==336:
+                            print(x_pre[i:i+3])
+                            print(x_sub[i:i+3])
+                            print(x[i:i+3])
+                        continue
+
+                    ###difference here for all manual 2 variants
+                    new_point = constraint.nearest_surface_point(np.array(point), constraint.gradient_function(self.x0[i:i+3])[0]) ##change
+
+                    displacement = new_point - point
+                    normal = np.linalg.norm(constraint.gradient_function(self.x0[i:i+3]))
+                    del_lambda = M*np.linalg.norm(displacement)/(dt)
+                    x[i:i+3] = new_point
+                    lambda0[i//3] += del_lambda
+
+                constraints[index]['constraint'].lambda0 = lambda0
+                ite_cnt += 1
+                lambda_prev = np.array(lambda0)
+                constraints = self.mesh.constraints
+                optimum = optimize.minimize(self.objective, jac = self.objective_gradient, tol = tolerance, x0 = self.mesh.current_position)
+                x = optimum.x
+                x_pre = np.array(x)
+                x_sub = np.array(x)
+                constraint_dict = constraints[index]
+                constraint = constraint_dict['constraint']
+                function = constraint.constraint_function
+                lambda0 = np.array(constraint.lambda0)
+                x_collection.append(x)
+            print("-------------")
+        all_x_collection.append(x_collection)
+        return x_pre, x_sub, x, constraints

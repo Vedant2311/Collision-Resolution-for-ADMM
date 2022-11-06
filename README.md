@@ -1,1 +1,3 @@
-# Collision-Resolution-for-ADMM
+# Collision_handling
+
+Collision handling in Computer Graphics
